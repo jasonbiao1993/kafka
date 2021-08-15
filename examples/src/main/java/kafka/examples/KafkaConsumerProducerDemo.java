@@ -16,7 +16,17 @@
  */
 package kafka.examples;
 
+import org.apache.log4j.PropertyConfigurator;
+
+import java.net.URL;
+
 public class KafkaConsumerProducerDemo {
+    static {
+        URL log4jRes = KafkaConsumerProducerDemo.class.getClassLoader().getResource("log4j.properties");
+
+        PropertyConfigurator.configure(log4jRes);
+
+    }
     public static void main(String[] args) {
         boolean isAsync = args.length == 0 || !args[0].trim().equalsIgnoreCase("sync");
         Producer producerThread = new Producer(KafkaProperties.TOPIC, isAsync);

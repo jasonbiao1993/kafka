@@ -32,6 +32,11 @@ import org.apache.kafka.common.utils.Utils;
  * <li>If a partition is specified in the record, use it
  * <li>If no partition is specified but a key is present choose a partition based on a hash of the key
  * <li>If no partition or key is present choose a partition in a round-robin fashion
+ *
+ * 默认的分区策略
+ * 1. 指定分区
+ * 2. 指定分区key
+ * 3. 不指定分区key
  */
 public class DefaultPartitioner implements Partitioner {
 
@@ -56,14 +61,17 @@ public class DefaultPartitioner implements Partitioner {
             int nextValue = counter.getAndIncrement();
             List<PartitionInfo> availablePartitions = cluster.availablePartitionsForTopic(topic);
             if (availablePartitions.size() > 0) {
+                // 轮询可用分区，得到指定分区
                 int part = Utils.toPositive(nextValue) % availablePartitions.size();
                 return availablePartitions.get(part).partition();
             } else {
                 // no partitions are available, give a non-available partition
+                // 无可用分区，从所有分区获取一个发送
                 return Utils.toPositive(nextValue) % numPartitions;
             }
         } else {
             // hash the keyBytes to choose a partition
+            // 通过分区key，hash，得到指定分区
             return Utils.toPositive(Utils.murmur2(keyBytes)) % numPartitions;
         }
     }

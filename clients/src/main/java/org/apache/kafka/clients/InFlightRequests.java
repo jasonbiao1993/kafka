@@ -86,6 +86,7 @@ final class InFlightRequests {
      */
     public boolean canSendMore(String node) {
         Deque<ClientRequest> queue = requests.get(node);
+        // 最大允许多少个请求没有收到响应
         return queue == null || queue.isEmpty() ||
                (queue.peekFirst().request().completed() && queue.size() < this.maxInFlightRequestsPerConnection);
     }

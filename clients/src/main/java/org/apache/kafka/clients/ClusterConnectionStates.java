@@ -17,7 +17,7 @@ import java.util.Map;
 
 /**
  * The state of our connection to each node in the cluster.
- * 
+ * 我们与集群中每个节点的连接状态
  */
 final class ClusterConnectionStates {
     private final long reconnectBackoffMs;
@@ -37,9 +37,11 @@ final class ClusterConnectionStates {
      */
     public boolean canConnect(String id, long now) {
         NodeConnectionState state = nodeState.get(id);
+        // 未建立过连接，直接返回true
         if (state == null)
             return true;
         else
+            // 连接已经关闭，且距离上一次关闭连接超过100ms, 返回true
             return state.state == ConnectionState.DISCONNECTED && now - state.lastConnectAttemptMs >= this.reconnectBackoffMs;
     }
 

@@ -40,10 +40,10 @@ public class AbstractConfig {
     /* configs for which values have been requested, used to detect unused configs */
     private final Set<String> used;
 
-    /* the original values passed in by the user */
+    /* the original values passed in by the user 用户传入的原始值 */
     private final Map<String, ?> originals;
 
-    /* the parsed values */
+    /* the parsed values 解析值 */
     private final Map<String, Object> values;
 
     @SuppressWarnings("unchecked")

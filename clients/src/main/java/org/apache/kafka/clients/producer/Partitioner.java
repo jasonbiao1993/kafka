@@ -22,6 +22,7 @@ import org.apache.kafka.common.Cluster;
 
 /**
  * Partitioner Interface
+ * 用于计算每条消息的topic属于的分区
  */
 
 public interface Partitioner extends Configurable {

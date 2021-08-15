@@ -19,8 +19,17 @@ public class PartitionInfo {
 
     private final String topic;
     private final int partition;
+    /**
+     * leader 节点
+     */
     private final Node leader;
+    /**
+     * 副本节点
+     */
     private final Node[] replicas;
+    /**
+     * ISR 列表
+     */
     private final Node[] inSyncReplicas;
 
     public PartitionInfo(String topic, int partition, Node leader, Node[] replicas, Node[] inSyncReplicas) {

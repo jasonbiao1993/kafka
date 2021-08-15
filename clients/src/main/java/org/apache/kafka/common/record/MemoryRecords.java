@@ -25,24 +25,30 @@ import org.apache.kafka.common.utils.Utils;
 
 /**
  * A {@link Records} implementation backed by a ByteBuffer.
+ *
+ * 持有一个ByteBuffer，用于消息记录 Record 写入
  */
 public class MemoryRecords implements Records {
 
     private final static int WRITE_LIMIT_FOR_READABLE_ONLY = -1;
 
     // the compressor used for appends-only
+    // 压缩包装处理类
     private final Compressor compressor;
 
     // the write limit for writable buffer, which may be smaller than the buffer capacity
+    // 写限制
     private final int writeLimit;
 
     // the capacity of the initial buffer, which is only used for de-allocation of writable records
+    // 初始化容量
     private final int initialCapacity;
 
     // the underlying buffer used for read; while the records are still writable it is null
     private ByteBuffer buffer;
 
     // indicate if the memory records is writable or not (i.e. used for appends or read-only)
+    // 表示是否可写
     private boolean writable;
 
     // Construct a writable memory records
@@ -96,6 +102,7 @@ public class MemoryRecords implements Records {
             throw new IllegalStateException("Memory records is not writable");
 
         int size = Record.recordSize(key, value);
+        // 真正的写交给 compressor
         compressor.putLong(offset);
         compressor.putInt(size);
         long crc = compressor.putRecord(timestamp, key, value);

@@ -30,14 +30,41 @@ import java.util.Set;
 public final class Cluster {
 
     private final boolean isBootstrapConfigured;
+    /**
+     * broker 节点列表
+     */
     private final List<Node> nodes;
+    /**
+     * 未授权的topic列表
+     */
     private final Set<String> unauthorizedTopics;
+    /**
+     * 内部topic列表
+     */
     private final Set<String> internalTopics;
+    /**
+     * 分区对应的分区信息映射
+     */
     private final Map<TopicPartition, PartitionInfo> partitionsByTopicPartition;
+    /**
+     * topic->分区列表映射
+     */
     private final Map<String, List<PartitionInfo>> partitionsByTopic;
+    /**
+     * topic->可用分区列表的映射
+     */
     private final Map<String, List<PartitionInfo>> availablePartitionsByTopic;
+    /**
+     * broker节点到分区信息的映射
+     */
     private final Map<Integer, List<PartitionInfo>> partitionsByNode;
+    /**
+     * 节点broker.id->node信息映射
+     */
     private final Map<Integer, Node> nodesById;
+    /**
+     * cluster资源信息
+     */
     private final ClusterResource clusterResource;
 
     /**

@@ -54,6 +54,8 @@ import org.slf4j.LoggerFactory;
 /**
  * The background thread that handles the sending of produce requests to the Kafka cluster. This thread makes metadata
  * requests to renew its view of the cluster and then sends produce requests to the appropriate nodes.
+ *
+ * Sender 线程，负责从缓冲区里获取消息发送到broker上去
  */
 public class Sender implements Runnable {
 
@@ -173,19 +175,23 @@ public class Sender implements Runnable {
     void run(long now) {
         Cluster cluster = metadata.fetch();
         // get the list of partitions with data ready to send
+        // 获取准备发送数据的分区列表
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
         // if there are any partitions whose leaders are not known yet, force metadata update
+        // 存在不知道leader 的元数据信息，，标记一下后续拉取，未知的leader 的topic 数据暂时不发送
         if (!result.unknownLeaderTopics.isEmpty()) {
             // The set of topics with unknown leader contains topics with leader election pending as well as
             // topics which may have expired. Add the topic again to metadata to ensure it is included
             // and request metadata update, since there are messages to send to the topic.
             for (String topic : result.unknownLeaderTopics)
                 this.metadata.add(topic);
+            // 设置需要更新
             this.metadata.requestUpdate();
         }
 
         // remove any nodes we aren't ready to send to
+        // 删除还未与broker建立连接的节点
         Iterator<Node> iter = result.readyNodes.iterator();
         long notReadyTimeout = Long.MAX_VALUE;
         while (iter.hasNext()) {
@@ -196,25 +202,32 @@ public class Sender implements Runnable {
             }
         }
 
-        // create produce requests
+        // create produce requests 创建生产请求
         Map<Integer, List<RecordBatch>> batches = this.accumulator.drain(cluster,
                                                                          result.readyNodes,
                                                                          this.maxRequestSize,
                                                                          now);
+        // 顺序发送
         if (guaranteeMessageOrder) {
             // Mute all the partitions drained
+            // 锁定所有消息
             for (List<RecordBatch> batchList : batches.values()) {
                 for (RecordBatch batch : batchList)
                     this.accumulator.mutePartition(batch.topicPartition);
             }
         }
 
+        // 终止过期的batch
         List<RecordBatch> expiredBatches = this.accumulator.abortExpiredBatches(this.requestTimeout, now);
         // update sensors
         for (RecordBatch expiredBatch : expiredBatches)
+            // 记录错误数
             this.sensors.recordErrors(expiredBatch.topicPartition.topic(), expiredBatch.recordCount);
 
+        // 更新metric
         sensors.updateProduceRequestMetrics(batches);
+
+        // 创建请求
         List<ClientRequest> requests = createProduceRequests(batches, now);
         // If we have any nodes that are ready to send + have sendable data, poll with 0 timeout so this can immediately
         // loop and try sending more data. Otherwise, the timeout is determined by nodes that have partitions with data
@@ -226,6 +239,8 @@ public class Sender implements Runnable {
             log.trace("Created {} produce requests: {}", requests.size(), requests);
             pollTimeout = 0;
         }
+
+        // 发送请求
         for (ClientRequest request : requests)
             client.send(request, now);
 
@@ -233,6 +248,7 @@ public class Sender implements Runnable {
         // otherwise if some partition already has some data accumulated but not ready yet,
         // the select time will be the time difference between now and its linger expiry time;
         // otherwise the select time will be the time difference between now and the metadata expiry time;
+        // 进行实际的网络通信发送，以及对响应结果的处理
         this.client.poll(pollTimeout, now);
     }
 
@@ -265,6 +281,7 @@ public class Sender implements Runnable {
                                                                                                   .request()
                                                                                                   .destination());
             for (RecordBatch batch : batches.values())
+                // 缓存批次
                 completeBatch(batch, Errors.NETWORK_EXCEPTION, -1L, Record.NO_TIMESTAMP, correlationId, now);
         } else {
             log.trace("Received produce response from node {} with correlation id {}",
@@ -344,6 +361,7 @@ public class Sender implements Runnable {
 
     /**
      * Transfer the record batches into a list of produce requests on a per-node basis
+     * 为每个 Broker 创建一个 request
      */
     private List<ClientRequest> createProduceRequests(Map<Integer, List<RecordBatch>> collated, long now) {
         List<ClientRequest> requests = new ArrayList<ClientRequest>(collated.size());
@@ -378,6 +396,7 @@ public class Sender implements Runnable {
 
     /**
      * Wake up the selector associated with this send thread
+     * 唤醒与此发送线程关联的选择器
      */
     public void wakeup() {
         this.client.wakeup();

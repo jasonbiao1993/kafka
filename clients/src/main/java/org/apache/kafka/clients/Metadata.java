@@ -42,6 +42,8 @@ import java.util.Set;
  * If topic expiry is enabled for the metadata, any topic that has not been used within the expiry interval
  * is removed from the metadata refresh set after an update. Consumers disable topic expiry since they explicitly
  * manage topics while producers rely on topic expiry to limit the refresh set.
+ *
+ * 用于保存从Broker端拉取的元数据, 懒加载方式实现, 发送消息时加载，或者metadata.max.age.ms=5，每隔5分钟会通过定时任务拉取一次
  */
 public final class Metadata {
 
@@ -57,7 +59,10 @@ public final class Metadata {
     private long lastSuccessfulRefreshMs;
     private Cluster cluster;
     private boolean needUpdate;
-    /* Topics with expiry time */
+    /**
+     * Topics with expiry time
+     * 过期topic
+     */
     private final Map<String, Long> topics;
     private final List<Listener> listeners;
     private final ClusterResourceListeners clusterResourceListeners;
@@ -201,6 +206,7 @@ public final class Metadata {
         this.lastSuccessfulRefreshMs = now;
         this.version += 1;
 
+        // topic过期处理
         if (topicExpiryEnabled) {
             // Handle expiry of topics from the metadata refresh set.
             for (Iterator<Map.Entry<String, Long>> it = topics.entrySet().iterator(); it.hasNext(); ) {
@@ -224,6 +230,7 @@ public final class Metadata {
             // the listener may change the interested topics, which could cause another metadata refresh.
             // If we have already fetched all topics, however, another fetch should be unnecessary.
             this.needUpdate = false;
+            // 拉去集群信息
             this.cluster = getClusterForCurrentTopics(cluster);
         } else {
             this.cluster = cluster;
@@ -237,6 +244,7 @@ public final class Metadata {
             clusterResourceListeners.onUpdate(cluster.clusterResource());
         }
 
+        // 唤醒所有等待获取metadata的线程
         notifyAll();
         log.debug("Updated cluster metadata version {} to {}", this.version, this.cluster);
     }
