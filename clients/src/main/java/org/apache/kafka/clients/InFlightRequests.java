@@ -88,6 +88,7 @@ final class InFlightRequests {
         Deque<ClientRequest> queue = requests.get(node);
         // 最大允许多少个请求没有收到响应
         return queue == null || queue.isEmpty() ||
+                // 存在未发送完成的节点，最后一个插入的节点最header节点，或者飞行请求操过5个，都不能进行发送
                (queue.peekFirst().request().completed() && queue.size() < this.maxInFlightRequestsPerConnection);
     }
 

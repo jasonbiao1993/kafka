@@ -29,11 +29,29 @@ import java.security.Principal;
 import org.apache.kafka.common.utils.Utils;
 
 public class KafkaChannel {
+    /**
+     * brokerId
+     */
     private final String id;
+    /**
+     * 传输层封装 SocketChannel 和 SelectionKey
+     */
     private final TransportLayer transportLayer;
+    /**
+     * 身份验证器
+     */
     private final Authenticator authenticator;
+    /**
+     * 最大接受大小
+     */
     private final int maxReceiveSize;
+    /**
+     * channel 最近读出来的值
+     */
     private NetworkReceive receive;
+    /**
+     * 最近发送网络请求值
+     */
     private Send send;
 
     public KafkaChannel(String id, TransportLayer transportLayer, Authenticator authenticator, int maxReceiveSize) throws IOException {
@@ -70,6 +88,7 @@ public class KafkaChannel {
 
 
     public boolean finishConnect() throws IOException {
+        // 传输层调用连接
         return transportLayer.finishConnect();
     }
 
@@ -119,6 +138,7 @@ public class KafkaChannel {
     }
 
     public void setSend(Send send) {
+        // 防止并发操作
         if (this.send != null)
             throw new IllegalStateException("Attempt to begin a send operation with prior send operation still in progress.");
         this.send = send;
@@ -134,6 +154,7 @@ public class KafkaChannel {
 
         receive(receive);
         if (receive.complete()) {
+            // 倒回，后续将进行读操作
             receive.payload().rewind();
             result = receive;
             receive = null;
@@ -145,6 +166,8 @@ public class KafkaChannel {
         Send result = null;
         if (send != null && send(send)) {
             result = send;
+
+            // 设置未null
             send = null;
         }
         return result;
@@ -155,8 +178,10 @@ public class KafkaChannel {
     }
 
     private boolean send(Send send) throws IOException {
+        // 通过访问者模式实现
         send.writeTo(transportLayer);
         if (send.completed())
+            // 发送完毕移除 OP_WRITE
             transportLayer.removeInterestOps(SelectionKey.OP_WRITE);
 
         return send.completed();

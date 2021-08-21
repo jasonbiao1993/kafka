@@ -35,10 +35,21 @@ public class PlaintextChannelBuilder implements ChannelBuilder {
         }
     }
 
+    /**
+     * 构建 KafkaChannel
+     * @param  id  channel id brokerId
+     * @param  key SelectionKey
+     * @param  maxReceiveSize 最大接收值
+     * @return KafkaChannel
+     * @throws KafkaException
+     */
     public KafkaChannel buildChannel(String id, SelectionKey key, int maxReceiveSize) throws KafkaException {
         KafkaChannel channel = null;
         try {
+            // 传输层
             PlaintextTransportLayer transportLayer = new PlaintextTransportLayer(key);
+
+            // 授权构建
             Authenticator authenticator = new DefaultAuthenticator();
             authenticator.configure(transportLayer, this.principalBuilder, this.configs);
             channel = new KafkaChannel(id, transportLayer, authenticator, maxReceiveSize);

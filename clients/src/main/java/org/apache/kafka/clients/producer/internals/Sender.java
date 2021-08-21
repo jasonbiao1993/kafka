@@ -168,6 +168,7 @@ public class Sender implements Runnable {
 
     /**
      * Run a single iteration of sending
+     * 单线程，防止线程并发导致的问题
      * 
      * @param now
      *            The current POSIX time in milliseconds
@@ -319,6 +320,7 @@ public class Sender implements Runnable {
      * @param now The current POSIX time stamp in milliseconds
      */
     private void completeBatch(RecordBatch batch, Errors error, long baseOffset, long timestamp, long correlationId, long now) {
+        // 存在异常，并且能够重试
         if (error != Errors.NONE && canRetry(batch, error)) {
             // retry
             log.warn("Got error produce response with correlation id {} on topic-partition {}, retrying ({} attempts left). Error: {}",
@@ -326,7 +328,9 @@ public class Sender implements Runnable {
                      batch.topicPartition,
                      this.retries - batch.attempts - 1,
                      error);
+            // 重新入队，后续可再次发送
             this.accumulator.reenqueue(batch, now);
+            // 重试记录
             this.sensors.recordRetries(batch.topicPartition.topic(), batch.recordCount);
         } else {
             RuntimeException exception;
@@ -335,11 +339,17 @@ public class Sender implements Runnable {
             else
                 exception = error.exception();
             // tell the user the result of their request
+            // 告诉用户回调结果
             batch.done(baseOffset, timestamp, exception);
+
+            // 归还 free 缓存池
             this.accumulator.deallocate(batch);
             if (error != Errors.NONE)
+                // 如果存在异常，记录异常日志
                 this.sensors.recordErrors(batch.topicPartition.topic(), batch.recordCount);
         }
+
+        // 无效的元数据 和 未知的topic 异常，从新触发更新元数据
         if (error.exception() instanceof InvalidMetadataException) {
             if (error.exception() instanceof UnknownTopicOrPartitionException)
                 log.warn("Received unknown topic or partition error in produce request on partition {}. The " +
@@ -347,8 +357,9 @@ public class Sender implements Runnable {
             metadata.requestUpdate();
         }
 
-        // Unmute the completed partition.
+        // Unmute the completed partition. 保证顺序消息，这里需要解锁
         if (guaranteeMessageOrder)
+            // 解锁完成的 partition
             this.accumulator.unmutePartition(batch.topicPartition);
     }
 
@@ -387,6 +398,7 @@ public class Sender implements Runnable {
                                            request.toStruct());
         RequestCompletionHandler callback = new RequestCompletionHandler() {
             public void onComplete(ClientResponse response) {
+                // 响应回调
                 handleProduceResponse(response, recordsByPartition, time.milliseconds());
             }
         };

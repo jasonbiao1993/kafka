@@ -245,7 +245,10 @@ public class NetworkClient implements KafkaClient {
 
     private void doSend(ClientRequest request, long now) {
         request.setSendTimeMs(now);
+        // 先添加需要发送的请求
         this.inFlightRequests.add(request);
+
+        // 然后发送，发送可能并发，报错
         selector.send(request.request());
     }
 
@@ -276,6 +279,8 @@ public class NetworkClient implements KafkaClient {
         handleCompletedReceives(responses, updatedNow);
         handleDisconnections(responses, updatedNow);
         handleConnections();
+
+        // 处理超时请求
         handleTimedOutRequests(responses, updatedNow);
 
         // invoke callbacks
@@ -283,6 +288,7 @@ public class NetworkClient implements KafkaClient {
         for (ClientResponse response : responses) {
             if (response.request().hasCallback()) {
                 try {
+                    // 响应回调
                     response.request().callback().onComplete(response);
                 } catch (Exception e) {
                     log.error("Uncaught error in request completion:", e);
@@ -402,6 +408,7 @@ public class NetworkClient implements KafkaClient {
         for (ClientRequest request : this.inFlightRequests.clearAll(nodeId)) {
             log.trace("Cancelled request {} due to node {} being disconnected", request, nodeId);
             if (!metadataUpdater.maybeHandleDisconnection(request))
+                // 创建断开连接响应，后续处理
                 responses.add(new ClientResponse(request, now, true, null));
         }
     }
@@ -423,6 +430,7 @@ public class NetworkClient implements KafkaClient {
         }
 
         // we disconnected, so we should probably refresh our metadata
+        // 如果断开连接，我们需要重新拉去元数据信息
         if (nodeIds.size() > 0)
             metadataUpdater.requestUpdate();
     }
@@ -437,8 +445,11 @@ public class NetworkClient implements KafkaClient {
         // if no response is expected then when the send is completed, return it
         for (Send send : this.selector.completedSends()) {
             ClientRequest request = this.inFlightRequests.lastSent(send.destination());
+            // 不期待回应得请求
             if (!request.expectResponse()) {
+                // 完成直接移除
                 this.inFlightRequests.completeLastSent(send.destination());
+                // 创建响应
                 responses.add(new ClientResponse(request, now, false, null));
             }
         }
@@ -454,10 +465,14 @@ public class NetworkClient implements KafkaClient {
         // 处理完成的请求列表
         for (NetworkReceive receive : this.selector.completedReceives()) {
             String source = receive.source();
+
+            // 获取请求
             ClientRequest req = inFlightRequests.completeNext(source);
+
+            // 获取匹配的响应
             Struct body = parseResponse(receive.payload(), req.request().header());
             if (!metadataUpdater.maybeHandleCompletedReceive(req, now, body))
-                // 未处理的响应，后续处理
+                // 构建响应
                 responses.add(new ClientResponse(req, now, false, body));
         }
     }
@@ -471,10 +486,12 @@ public class NetworkClient implements KafkaClient {
     private void handleDisconnections(List<ClientResponse> responses, long now) {
         for (String node : this.selector.disconnected()) {
             log.debug("Node {} disconnected.", node);
+            // 更新过期的 connectionStates
             processDisconnection(responses, node, now);
         }
         // we got a disconnect so we should probably refresh our metadata and see if that broker is dead
         if (this.selector.disconnected().size() > 0)
+            // 刷新元数据，防止 broker down 机，导致的连接断开
             metadataUpdater.requestUpdate();
     }
 
@@ -484,6 +501,7 @@ public class NetworkClient implements KafkaClient {
     private void handleConnections() {
         for (String node : this.selector.connected()) {
             log.debug("Completed connection to node {}", node);
+            // 更新连接状态
             this.connectionStates.connected(node);
         }
     }
@@ -505,7 +523,9 @@ public class NetworkClient implements KafkaClient {
         String nodeConnectionId = node.idString();
         try {
             log.debug("Initiating connection to node {} at {}:{}.", node.id(), node.host(), node.port());
+            // 设置连接状态未连接中
             this.connectionStates.connecting(nodeConnectionId, now);
+            // 触发连接操作
             selector.connect(nodeConnectionId,
                              new InetSocketAddress(node.host(), node.port()),
                              this.socketSendBuffer,

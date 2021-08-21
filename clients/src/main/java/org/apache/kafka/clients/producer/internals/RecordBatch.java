@@ -94,6 +94,7 @@ public final class RecordBatch {
                   baseOffset,
                   exception);
         // execute callbacks
+        // 执行消息回调
         for (int i = 0; i < this.thunks.size(); i++) {
             try {
                 Thunk thunk = this.thunks.get(i);
@@ -104,8 +105,10 @@ public final class RecordBatch {
                                                                  thunk.future.checksum(),
                                                                  thunk.future.serializedKeySize(),
                                                                  thunk.future.serializedValueSize());
+                    // 正常回调
                     thunk.callback.onCompletion(metadata, null);
                 } else {
+                    // 异常回调
                     thunk.callback.onCompletion(null, exception);
                 }
             } catch (Exception e) {

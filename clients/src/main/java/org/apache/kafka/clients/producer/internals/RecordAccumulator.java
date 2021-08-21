@@ -289,12 +289,17 @@ public final class RecordAccumulator {
      * Re-enqueue the given record batch in the accumulator to retry
      */
     public void reenqueue(RecordBatch batch, long now) {
+        // 重试次数+1
         batch.attempts++;
+        // 最近访问的时间
         batch.lastAttemptMs = now;
+        // 最近 append 的时间
         batch.lastAppendTime = now;
+        // 设置为重试
         batch.setRetry();
         Deque<RecordBatch> deque = getOrCreateDeque(batch.topicPartition);
         synchronized (deque) {
+            // 重新入队，放到对头，优先发送需要重试的消息
             deque.addFirst(batch);
         }
     }
@@ -462,7 +467,7 @@ public final class RecordAccumulator {
                 this.drainIndex = (this.drainIndex + 1) % parts.size();
             } while (start != drainIndex);
 
-            // 准备好带发送的数据
+            // 准备好带发送的数据 brokerId -> RecordBatch
             batches.put(node.id(), ready);
         }
         return batches;
