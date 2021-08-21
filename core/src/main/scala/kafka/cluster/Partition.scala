@@ -367,6 +367,7 @@ class Partition(val topic: String,
 
   /**
    * Try to complete any pending requests. This should be called without holding the leaderIsrUpdateLock.
+   * 尝试完成待处理的请求
    */
   private def tryCompleteDelayedRequests() {
     val requestKey = new TopicPartitionOperationKey(this.topic, this.partitionId)
@@ -427,19 +428,24 @@ class Partition(val topic: String,
 
   def appendMessagesToLeader(messages: ByteBufferMessageSet, requiredAcks: Int = 0) = {
     val (info, leaderHWIncremented) = inReadLock(leaderIsrUpdateLock) {
+      // 获取Leader对应的 Replica
       val leaderReplicaOpt = leaderReplicaIfLocal()
       leaderReplicaOpt match {
         case Some(leaderReplica) =>
           val log = leaderReplica.log.get
+          // 最新的同步副本数 = 1
           val minIsr = log.config.minInSyncReplicas
+          // 实际同步副本数
           val inSyncSize = inSyncReplicas.size
 
           // Avoid writing to leader if there are not enough insync replicas to make it safe
+          // 如果没有足够的同步副本来确保安全，请避免写入领导者
           if (inSyncSize < minIsr && requiredAcks == -1) {
             throw new NotEnoughReplicasException("Number of insync replicas for partition [%s,%d] is [%d], below required minimum [%d]"
               .format(topic, partitionId, inSyncSize, minIsr))
           }
 
+          // 追加消息
           val info = log.append(messages, assignOffsets = true)
           // probably unblock some follower fetch requests since log end offset has been updated
           replicaManager.tryCompleteDelayedFetch(TopicPartitionOperationKey(this.topic, this.partitionId))
@@ -447,12 +453,14 @@ class Partition(val topic: String,
           (info, maybeIncrementLeaderHW(leaderReplica))
 
         case None =>
+          // 非 Leader 异常
           throw new NotLeaderForPartitionException("Leader not local for partition [%s,%d] on broker %d"
             .format(topic, partitionId, localBrokerId))
       }
     }
 
     // some delayed operations may be unblocked after HW changed
+    // 副本的高水印改变后，一些延迟操作允许解锁
     if (leaderHWIncremented)
       tryCompleteDelayedRequests()
 

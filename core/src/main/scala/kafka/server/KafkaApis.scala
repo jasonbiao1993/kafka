@@ -76,7 +76,9 @@ class KafkaApis(val requestChannel: RequestChannel,
       trace("Handling request:%s from connection %s;securityProtocol:%s,principal:%s".
         format(request.requestDesc(true), request.connectionId, request.securityProtocol, request.session.principal))
       ApiKeys.forId(request.requestId) match {
+          // 生产消息
         case ApiKeys.PRODUCE => handleProducerRequest(request)
+          // 副本拉取
         case ApiKeys.FETCH => handleFetchRequest(request)
         case ApiKeys.LIST_OFFSETS => handleOffsetRequest(request)
         case ApiKeys.METADATA => handleTopicMetadataRequest(request)
@@ -346,9 +348,11 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   /**
    * Handle a produce request
+   * 处理一个 生产消息 请求
    */
   def handleProducerRequest(request: RequestChannel.Request) {
     val produceRequest = request.body.asInstanceOf[ProduceRequest]
+    // 追加字节大小
     val numBytesAppended = request.header.sizeOf + produceRequest.sizeOf
 
     val (existingAndAuthorizedForDescribeTopics, nonExistingOrUnauthorizedForDescribeTopics) = produceRequest.partitionRecords.asScala.partition {
@@ -360,8 +364,10 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     // the callback for sending a produce response
+    // 发送生产响应回调
     def sendResponseCallback(responseStatus: Map[TopicPartition, PartitionResponse]) {
 
+      // 增加 不存在topic 和 未授权写 topic 的响应记录
       val mergedResponseStatus = responseStatus ++ 
         unauthorizedForWriteRequestInfo.mapValues(_ =>
            new PartitionResponse(Errors.TOPIC_AUTHORIZATION_FAILED.code, -1, Message.NoTimestamp)) ++ 
@@ -381,7 +387,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
 
+      // 生产响应回调
       def produceResponseCallback(delayTimeMs: Int) {
+        // 是否需要回执
         if (produceRequest.acks == 0) {
           // no operation needed if producer request.required.acks = 0; however, if there is any error in handling
           // the request, since no response is expected by the producer, the server will close socket server so that
@@ -395,12 +403,16 @@ class KafkaApis(val requestChannel: RequestChannel,
                 s"from client id ${request.header.clientId} with ack=0\n" +
                 s"Topic and partition to exceptions: $exceptionsSummary"
             )
+            // 不需要回执，且出现异常，关闭客户端连接
             requestChannel.closeConnection(request.processor, request)
           } else {
+            // 构建一个不需要回执的响应, 添加到 RequestChannel
             requestChannel.noOperation(request.processor, request)
           }
         } else {
+          // 构建响应头
           val respHeader = new ResponseHeader(request.header.correlationId)
+          // 通过不同的版本，构建不同的响应
           val respBody = request.header.apiVersion match {
             case 0 => new ProduceResponse(mergedResponseStatus.asJava)
             case version@(1 | 2) => new ProduceResponse(mergedResponseStatus.asJava, delayTimeMs, version)
@@ -409,6 +421,7 @@ class KafkaApis(val requestChannel: RequestChannel,
             case version => throw new IllegalArgumentException(s"Version `$version` of ProduceRequest is not handled. Code must be updated.")
           }
 
+          // 将响应添加到 RequestChannel
           requestChannel.sendResponse(new RequestChannel.Response(request, new ResponseSend(request.connectionId, respHeader, respBody)))
         }
       }
@@ -416,6 +429,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       // When this callback is triggered, the remote API call has completed
       request.apiRemoteCompleteTimeMs = SystemTime.milliseconds
 
+      // 记录并允许限制
       quotas.produce.recordAndMaybeThrottle(
         request.session.sanitizedUser,
         request.header.clientId,
@@ -424,16 +438,19 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     if (authorizedRequestInfo.isEmpty)
+      // 授权请求为null, 直接发送错误回调给 client
       sendResponseCallback(Map.empty)
     else {
       val internalTopicsAllowed = request.header.clientId == AdminUtils.AdminClientId
 
       // Convert ByteBuffer to ByteBufferMessageSet
+      // 将 ByteBuffer 转换为 ByteBufferMessageSet
       val authorizedMessagesPerPartition = authorizedRequestInfo.map {
         case (topicPartition, buffer) => (topicPartition, new ByteBufferMessageSet(buffer))
       }
 
       // call the replica manager to append messages to the replicas
+      // 调用 replica 管理工具，将消息添加到 replicas
       replicaManager.appendMessages(
         produceRequest.timeout.toLong,
         produceRequest.acks,

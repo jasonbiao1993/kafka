@@ -271,6 +271,7 @@ class Log(val dir: File,
   }
 
   private def updateLogEndOffset(messageOffset: Long) {
+    // 日志偏移量
     nextOffsetMetadata = new LogOffsetMetadata(messageOffset, activeSegment.baseOffset, activeSegment.size.toInt)
   }
 
@@ -337,6 +338,7 @@ class Log(val dir: File,
    * @return Information about the appended messages including the first and last offset.
    */
   def append(messages: ByteBufferMessageSet, assignOffsets: Boolean = true): LogAppendInfo = {
+    // 分析和校验消息集合
     val appendInfo = analyzeAndValidateMessageSet(messages)
 
     // if we have any valid messages, append them to the log
@@ -344,6 +346,7 @@ class Log(val dir: File,
       return appendInfo
 
     // trim any invalid bytes or partial messages before appending it to the on-disk log
+    // 在将其附加到磁盘日志之前修剪任何无效字节或部分消息
     var validMessages = trimInvalidBytes(messages, appendInfo)
 
     try {
@@ -352,6 +355,7 @@ class Log(val dir: File,
 
         if (assignOffsets) {
           // assign offsets to the message set
+          // 为消息集分配偏移量
           val offset = new LongRef(nextOffsetMetadata.messageOffset)
           appendInfo.firstOffset = offset.value
           val now = time.milliseconds
@@ -406,17 +410,21 @@ class Log(val dir: File,
                                 maxTimestampInMessages = appendInfo.maxTimestamp)
 
         // now append to the log
+        // 现在追加日志
         segment.append(firstOffset = appendInfo.firstOffset, largestTimestamp = appendInfo.maxTimestamp,
           offsetOfLargestTimestamp = appendInfo.offsetOfMaxTimestamp, messages = validMessages)
 
         // increment the log end offset
+        // 更新日志 LOE
         updateLogEndOffset(appendInfo.lastOffset + 1)
 
         trace("Appended message set to log %s with first offset: %d, next offset: %d, and messages: %s"
           .format(this.name, appendInfo.firstOffset, nextOffsetMetadata.messageOffset, validMessages))
 
-        if (unflushedMessages >= config.flushInterval)
+        if (unflushedMessages >= config.flushInterval) {
+          // 强制刷盘
           flush()
+        }
 
         appendInfo
       }
@@ -467,6 +475,7 @@ class Log(val dir: File,
       if(messageSize > config.maxMessageSize) {
         BrokerTopicStats.getBrokerTopicStats(topicAndPartition.topic).bytesRejectedRate.mark(messages.sizeInBytes)
         BrokerTopicStats.getBrokerAllTopicsStats.bytesRejectedRate.mark(messages.sizeInBytes)
+        // 记录日志太长，报错
         throw new RecordTooLargeException("Message size is %d bytes which exceeds the maximum configured message size of %d."
           .format(messageSize, config.maxMessageSize))
       }
@@ -506,6 +515,7 @@ class Log(val dir: File,
       messages
     } else {
       // trim invalid bytes
+      // 修建无效字符
       val validByteBuffer = messages.buffer.duplicate()
       validByteBuffer.limit(messageSetValidBytes)
       new ByteBufferMessageSet(validByteBuffer)
@@ -713,6 +723,7 @@ class Log(val dir: File,
 
   /**
    *  The offset of the next message that will be appended to the log
+   *  将附加到日志的下一条消息的偏移量
    */
   def logEndOffset: Long = nextOffsetMetadata.messageOffset
 
@@ -734,6 +745,7 @@ class Log(val dir: File,
     val segment = activeSegment
     val now = time.milliseconds
     val reachedRollMs = segment.timeWaitedForRoll(now, maxTimestampInMessages) > config.segmentMs - segment.rollJitterMs
+    // 当前 segment 不能放下日志，新建一个 segment
     if (segment.size > config.segmentSize - messagesSize ||
         (segment.size > 0 && reachedRollMs) ||
         segment.index.isFull || segment.timeIndex.isFull) {
@@ -757,8 +769,11 @@ class Log(val dir: File,
     val start = time.nanoseconds
     lock synchronized {
       val newOffset = logEndOffset
+      // 日志文件名称
       val logFile = logFilename(dir, newOffset)
+      // 索引文件名称
       val indexFile = indexFilename(dir, newOffset)
+      // 时间索引名称
       val timeIndexFile = timeIndexFilename(dir, newOffset)
       for(file <- List(logFile, indexFile, timeIndexFile); if file.exists) {
         warn("Newly rolled segment file " + file.getName + " already exists; deleting it first")
@@ -770,8 +785,11 @@ class Log(val dir: File,
         case entry => {
           val seg = entry.getValue
           seg.onBecomeInactiveSegment()
+          // 截断到有效大小
           seg.index.trimToValidSize()
+          // 截断到有效大小
           seg.timeIndex.trimToValidSize()
+          // 截断到指定大小
           seg.log.trim()
         }
       }
@@ -801,6 +819,7 @@ class Log(val dir: File,
 
   /**
    * The number of messages appended to the log since the last flush
+   * 日志结束偏移量 - 恢复点
    */
   def unflushedMessages() = this.logEndOffset - this.recoveryPoint
 
@@ -823,6 +842,7 @@ class Log(val dir: File,
       segment.flush()
     lock synchronized {
       if(offset > this.recoveryPoint) {
+        // 刷新完后，更新 recoveryPoint
         this.recoveryPoint = offset
         lastflushedTime.set(time.milliseconds)
       }
@@ -898,6 +918,7 @@ class Log(val dir: File,
 
   /**
    * The active segment that is currently taking appends
+   * 当前正在追加的 segment
    */
   def activeSegment = segments.lastEntry.getValue
 

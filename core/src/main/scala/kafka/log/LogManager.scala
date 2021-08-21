@@ -348,6 +348,8 @@ class LogManager(val logDirs: Array[File],
   /**
    * Create a log for the given topic and the given partition
    * If the log already exists, just return a copy of the existing log
+   *
+   * 为给定的主题和给定的分区创建日志如果日志已经存在，只需返回现有日志的副本
    */
   def createLog(topicAndPartition: TopicAndPartition, config: LogConfig): Log = {
     logCreationOrDeletionLock synchronized {

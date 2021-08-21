@@ -94,6 +94,7 @@ class LogSegment(val log: FileMessageSet,
       if (physicalPosition == 0)
         rollingBasedTimestamp = Some(largestTimestamp)
       // append the messages
+      // 写消息
       log.append(messages)
       // Update the in memory max timestamp and corresponding offset.
       if (largestTimestamp > maxTimestampSoFar) {
@@ -102,7 +103,9 @@ class LogSegment(val log: FileMessageSet,
       }
       // append an entry to the index (if needed)
       if(bytesSinceLastIndexEntry > indexIntervalBytes) {
+        // 索引写
         index.append(firstOffset, physicalPosition)
+        // 时间索引
         timeIndex.maybeAppend(maxTimestampSoFar, offsetOfMaxTimestamp)
         bytesSinceLastIndexEntry = 0
       }
@@ -308,6 +311,7 @@ class LogSegment(val log: FileMessageSet,
 
   /**
    * Flush this log segment to disk
+   * 将此日志段刷新到磁盘
    */
   @threadsafe
   def flush() {

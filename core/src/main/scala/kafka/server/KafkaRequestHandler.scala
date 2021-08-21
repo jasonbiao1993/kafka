@@ -26,6 +26,7 @@ import org.apache.kafka.common.utils.Utils
 
 /**
  * A thread that answers kafka requests.
+ * Kafka 请求处理器
  */
 class KafkaRequestHandler(id: Int,
                           brokerId: Int,
@@ -39,17 +40,20 @@ class KafkaRequestHandler(id: Int,
     while(true) {
       try {
         var req : RequestChannel.Request = null
+        // 请求为null, 不断轮询获取请求
         while (req == null) {
           // We use a single meter for aggregate idle percentage for the thread pool.
           // Since meter is calculated as total_recorded_value / time_window and
           // time_window is independent of the number of threads, each recorded idle
           // time should be discounted by # threads.
           val startSelectTime = SystemTime.nanoseconds
+          // 阻塞获取请求，超时时间300ms
           req = requestChannel.receiveRequest(300)
           val idleTime = SystemTime.nanoseconds - startSelectTime
           aggregateIdleMeter.mark(idleTime / totalHandlerThreads)
         }
 
+        // 请求已经被处理
         if(req eq RequestChannel.AllDone) {
           debug("Kafka request handler %d on broker %d received shut down command".format(
             id, brokerId))
@@ -57,6 +61,8 @@ class KafkaRequestHandler(id: Int,
         }
         req.requestDequeueTimeMs = SystemTime.milliseconds
         trace("Kafka request handler %d on broker %d handling request %s".format(id, brokerId, req))
+
+        // KafkaApi 请求管理组件处理请求
         apis.handle(req)
       } catch {
         case e: Throwable => error("Exception when handling request", e)
@@ -68,11 +74,11 @@ class KafkaRequestHandler(id: Int,
 }
 
 /**
- * kafka 请求处理池
+ * kafka 请求处理线程，默认8个线程
  * @param brokerId
  * @param requestChannel
  * @param apis
- * @param numThreads
+ * @param numThreads 默认8个线程
  */
 class KafkaRequestHandlerPool(val brokerId: Int,
                               val requestChannel: RequestChannel,

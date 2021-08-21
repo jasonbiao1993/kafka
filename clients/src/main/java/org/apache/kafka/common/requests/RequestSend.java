@@ -35,6 +35,8 @@ public class RequestSend extends NetworkSend {
         ByteBuffer buffer = ByteBuffer.allocate(header.sizeOf() + body.sizeOf());
         header.writeTo(buffer);
         body.writeTo(buffer);
+
+        // 后续进行读
         buffer.rewind();
         return buffer;
     }
