@@ -50,6 +50,7 @@ import scala.collection.JavaConverters._
 
 /**
  * Logic to handle the various Kafka requests
+ * 处理 kafka 的各种处理逻辑
  */
 class KafkaApis(val requestChannel: RequestChannel,
                 val replicaManager: ReplicaManager,

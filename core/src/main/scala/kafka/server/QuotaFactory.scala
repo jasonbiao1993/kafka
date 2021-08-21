@@ -36,6 +36,13 @@ object QuotaFactory {
     override def isQuotaExceeded(): Boolean = false
   }
 
+  /**
+   * 限制了客户端生产、消费者消费、副本复制的流控
+   * @param fetch
+   * @param produce
+   * @param leader
+   * @param follower
+   */
   case class QuotaManagers(fetch: ClientQuotaManager, produce: ClientQuotaManager, leader: ReplicationQuotaManager, follower: ReplicationQuotaManager) {
     def shutdown() {
       fetch.shutdown

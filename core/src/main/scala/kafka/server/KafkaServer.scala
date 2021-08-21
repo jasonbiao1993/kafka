@@ -186,23 +186,32 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
       if(startupComplete.get)
         return
 
+      // 是否能启动
       val canStartup = isStartingUp.compareAndSet(false, true)
       if (canStartup) {
+        // 创建 metrics
         metrics = new Metrics(metricConfig, reporters, kafkaMetricsTime, true)
+
+        // 流控管理
         quotaManagers = QuotaFactory.instantiate(config, metrics, time)
 
+        // broker state 初始化
         brokerState.newState(Starting)
 
         /* start scheduler */
+        // kafka 相关 scheduler 启动
         kafkaScheduler.startup()
 
         /* setup zookeeper */
+        // 初始化 zkUtils
         zkUtils = initZk()
 
         /* Get or create cluster_id */
+        // 获取并生成 cluster_id
         _clusterId = getOrGenerateClusterId(zkUtils)
         info(s"Cluster ID = $clusterId")
 
+        // reporters.asScala 将java 集合转换为 scala 集合
         notifyClusterListeners(kafkaMetricsReporters ++ reporters.asScala)
 
         /* start log manager */
@@ -213,42 +222,46 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
         config.brokerId =  getBrokerId
         this.logIdent = "[Kafka Server " + config.brokerId + "], "
 
+        // 元数据缓存初始化
         metadataCache = new MetadataCache(config.brokerId)
 
+        // 初始化 socketServer
         socketServer = new SocketServer(config, metrics, kafkaMetricsTime)
         socketServer.startup()
 
-        /* start replica manager */
+        /* start replica manager 副本管理 */
         replicaManager = new ReplicaManager(config, metrics, time, kafkaMetricsTime, zkUtils, kafkaScheduler, logManager,
           isShuttingDown, quotaManagers.follower)
         replicaManager.startup()
 
-        /* start kafka controller */
+        /* start kafka controller 初始化控制器服务*/
         kafkaController = new KafkaController(config, zkUtils, brokerState, kafkaMetricsTime, metrics, threadNamePrefix)
         kafkaController.startup()
 
+        // 新建管理员命令服务
         adminManager = new AdminManager(config, metrics, metadataCache, zkUtils)
 
-        /* start group coordinator */
+        /* start group coordinator 消费者组协调者器 */
         groupCoordinator = GroupCoordinator(config, zkUtils, replicaManager, kafkaMetricsTime)
         groupCoordinator.startup()
 
-        /* Get the authorizer and initialize it if one is specified.*/
+        /* Get the authorizer and initialize it if one is specified. 授权服务*/
         authorizer = Option(config.authorizerClassName).filter(_.nonEmpty).map { authorizerClassName =>
           val authZ = CoreUtils.createObject[Authorizer](authorizerClassName)
           authZ.configure(config.originals())
           authZ
         }
 
-        /* start processing requests */
+        /* start processing requests  新建请求服务类*/
         apis = new KafkaApis(socketServer.requestChannel, replicaManager, adminManager, groupCoordinator,
           kafkaController, zkUtils, config.brokerId, config, metadataCache, metrics, authorizer, quotaManagers, clusterId)
 
+        // RPCServer请求的处理线程
         requestHandlerPool = new KafkaRequestHandlerPool(config.brokerId, socketServer.requestChannel, apis, config.numIoThreads)
 
         Mx4jLoader.maybeLoad()
 
-        /* start dynamic config manager */
+        /* start dynamic config manager 动态配置处理类 */
         dynamicConfigHandlers = Map[String, ConfigHandler](ConfigType.Topic -> new TopicConfigHandler(logManager, config, quotaManagers),
                                                            ConfigType.Client -> new ClientIdConfigHandler(quotaManagers),
                                                            ConfigType.User -> new UserConfigHandler(quotaManagers),
@@ -265,20 +278,26 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
           else
             (protocol, endpoint)
         }
+
+        // 健康检查启动
         kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, listeners, zkUtils, config.rack,
           config.interBrokerProtocolVersion)
         kafkaHealthcheck.startup()
 
         // Now that the broker id is successfully registered via KafkaHealthcheck, checkpoint it
+        // 检查是否成功注册
         checkpointBrokerId(config.brokerId)
 
         /* register broker metrics */
         registerStats()
 
+        // 更新 broker state
         brokerState.newState(RunningAsBroker)
         shutdownLatch = new CountDownLatch(1)
         startupComplete.set(true)
         isStartingUp.set(false)
+
+        // 注册 app info
         AppInfoParser.registerAppInfo(jmxPrefix, config.brokerId.toString)
         info("started")
       }
@@ -313,12 +332,15 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime, threadNamePr
     if (secureAclsEnabled && !isZkSecurityEnabled)
       throw new java.lang.SecurityException(s"${KafkaConfig.ZkEnableSecureAclsProp} is true, but the verification of the JAAS login file failed.")
 
+    // 循环创建 root节点
     chrootOption.foreach { chroot =>
       val zkConnForChrootCreation = config.zkConnect.substring(0, chrootIndex)
       val zkClientForChrootCreation = ZkUtils(zkConnForChrootCreation,
                                               config.zkSessionTimeoutMs,
                                               config.zkConnectionTimeoutMs,
                                               secureAclsEnabled)
+
+      // 创建持久节点
       zkClientForChrootCreation.makeSurePersistentPathExists(chroot)
       info(s"Created zookeeper path $chroot")
       zkClientForChrootCreation.zkClient.close()

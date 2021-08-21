@@ -32,6 +32,7 @@ import org.apache.kafka.common.metrics.Quota._
 import scala.collection.JavaConverters._
 /**
   * The ConfigHandler is used to process config change notifications received by the DynamicConfigManager
+ *  配置处理器，用接收DynamicConfigManager接收到改变的通知处理
   */
 trait ConfigHandler {
   def processConfigChanges(entityName: String, value: Properties)

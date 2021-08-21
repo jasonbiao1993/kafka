@@ -54,17 +54,26 @@ object Kafka extends Logging {
 
   def main(args: Array[String]): Unit = {
     try {
+      // 根据命令行的参数，获取配置文件中的相关配置,这里获取到的也就是/usr/local/etc/kafka/server.properties的内容
+      // 这里同时还会检查是否有入参，如果没有就会报错
       val serverProps = getPropsFromArgs(args)
+      // 根据配置构造一个kafkaServerStartable对象,这里面会检验必要的参数是否有值
       val kafkaServerStartable = KafkaServerStartable.fromProps(serverProps)
 
       // attach shutdown handler to catch control-c
+      // 注册 shutdown 钩子函数 绑定一个进程关闭的钩子
       Runtime.getRuntime().addShutdownHook(new Thread() {
         override def run() = {
           kafkaServerStartable.shutdown
         }
       })
 
+      // 在KafkaServerStartable.scala的startup方法中,会继续调用KafkaServer#startup()方法
+      // 在KafkaServer#startup()方法中，开始初始化并加载各个组件
       kafkaServerStartable.startup
+
+      // 阻塞直到kafka被关闭
+      // 底层用了java的CountDownLatch.await()。当kafka被关闭时，对应的CountDownLatch.countDown()方法会被调用,这时候程序就会真正退出
       kafkaServerStartable.awaitShutdown
     }
     catch {

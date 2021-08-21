@@ -157,6 +157,15 @@ object KafkaController extends Logging {
   }
 }
 
+/**
+ * 全集群唯一的控制器，控制所有的元数据变更管理
+ * @param config
+ * @param zkUtils
+ * @param brokerState
+ * @param time
+ * @param metrics
+ * @param threadNamePrefix
+ */
 class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerState: BrokerState, time: Time, metrics: Metrics, threadNamePrefix: Option[String] = None) extends Logging with KafkaMetricsGroup {
   this.logIdent = "[Controller " + config.brokerId + "]: "
   private var isRunning = true

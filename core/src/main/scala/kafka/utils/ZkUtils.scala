@@ -73,6 +73,7 @@ object ZkUtils {
 
   def createZkClientAndConnection(zkUrl: String, sessionTimeout: Int, connectionTimeout: Int): (ZkClient, ZkConnection) = {
     val zkConnection = new ZkConnection(zkUrl, sessionTimeout)
+    // 创建 zkClient 并进行连接
     val zkClient = new ZkClient(zkConnection, connectionTimeout, ZKStringSerializer)
     (zkClient, zkConnection)
   }
@@ -181,6 +182,12 @@ object ZkUtils {
 
 }
 
+/**
+ * zk连接器
+ * @param zkClient
+ * @param zkConnection
+ * @param isSecure
+ */
 class ZkUtils(val zkClient: ZkClient,
               val zkConnection: ZkConnection,
               val isSecure: Boolean) extends Logging {

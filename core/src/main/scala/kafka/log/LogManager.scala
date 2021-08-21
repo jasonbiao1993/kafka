@@ -36,6 +36,8 @@ import java.util.concurrent.{ExecutionException, ExecutorService, Executors, Fut
  * size or I/O rate.
  * 
  * A background thread handles log retention by periodically truncating excess log segments.
+ * 日志管理
+ * 主要是本地日志的生成，清理，滚动
  */
 @threadsafe
 class LogManager(val logDirs: Array[File],

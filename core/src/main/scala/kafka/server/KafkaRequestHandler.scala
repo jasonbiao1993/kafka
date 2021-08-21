@@ -67,6 +67,13 @@ class KafkaRequestHandler(id: Int,
   def shutdown(): Unit = requestChannel.sendRequest(RequestChannel.AllDone)
 }
 
+/**
+ * kafka 请求处理池
+ * @param brokerId
+ * @param requestChannel
+ * @param apis
+ * @param numThreads
+ */
 class KafkaRequestHandlerPool(val brokerId: Int,
                               val requestChannel: RequestChannel,
                               val apis: KafkaApis,

@@ -37,6 +37,8 @@ import scala.collection.{Map, Seq, immutable}
  *
  * Each Kafka server instantiates a coordinator which is responsible for a set of
  * groups. Groups are assigned to coordinators based on their group names.
+ * 消费者协调者
+ * 每个消费组，在服务都需要一个全局的消费组协调者，解决消费者的rebalance问题
  */
 class GroupCoordinator(val brokerId: Int,
                        val groupConfig: GroupConfig,

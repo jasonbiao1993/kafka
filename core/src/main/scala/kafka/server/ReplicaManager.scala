@@ -98,6 +98,19 @@ object ReplicaManager {
   val IsrChangePropagationInterval = 60000L
 }
 
+/**
+ * 副本的追加日志、删除日志，ISR的各种状态变更检查
+ * @param config
+ * @param metrics
+ * @param time
+ * @param jTime
+ * @param zkUtils
+ * @param scheduler
+ * @param logManager
+ * @param isShuttingDown
+ * @param quotaManager
+ * @param threadNamePrefix
+ */
 class ReplicaManager(val config: KafkaConfig,
                      metrics: Metrics,
                      time: Time,

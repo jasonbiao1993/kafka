@@ -24,12 +24,14 @@ import kafka.utils.{VerifiableProperties, Logging}
 
 object KafkaServerStartable {
   def fromProps(serverProps: Properties) = {
+    /// 构建上报类
     val reporters = KafkaMetricsReporter.startReporters(new VerifiableProperties(serverProps))
     new KafkaServerStartable(KafkaConfig.fromProps(serverProps), reporters)
   }
 }
 
 class KafkaServerStartable(val serverConfig: KafkaConfig, reporters: Seq[KafkaMetricsReporter]) extends Logging {
+  // 构建服务端 server
   private val server = new KafkaServer(serverConfig, kafkaMetricsReporters = reporters)
 
   def this(serverConfig: KafkaConfig) = this(serverConfig, Seq.empty)

@@ -48,6 +48,8 @@ import scala.util.control.{ControlThrowable, NonFatal}
  *   1 Acceptor thread that handles new connections
  *   Acceptor has N Processor threads that each have their own selector and read requests from sockets
  *   M Handler threads that handle requests and produce responses back to the processor threads for writing.
+ *
+ *   接口RPC请求的服务器。连接管理，请求分发和响应消息返回。新增了单IP的请求限制及溢出水位控制
  */
 class SocketServer(val config: KafkaConfig, val metrics: Metrics, val time: Time) extends Logging with KafkaMetricsGroup {
 

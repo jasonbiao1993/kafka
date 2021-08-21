@@ -31,6 +31,13 @@ import org.apache.kafka.common.requests.CreateTopicsRequest._
 import scala.collection._
 import scala.collection.JavaConverters._
 
+/**
+ * 针对管理员命令的服务处理，命令行方式的创建topic,删除topic,增加分区等
+ * @param config
+ * @param metrics
+ * @param metadataCache
+ * @param zkUtils
+ */
 class AdminManager(val config: KafkaConfig,
                    val metrics: Metrics,
                    val metadataCache: MetadataCache,

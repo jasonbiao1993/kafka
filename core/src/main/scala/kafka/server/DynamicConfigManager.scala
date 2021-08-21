@@ -82,7 +82,7 @@ object ConfigEntityName {
  *
  * On restart the config manager re-processes all notifications. This will usually be wasted work, but avoids any race conditions
  * on startup where a change might be missed between the initial config load and registering for change notifications.
- *
+ * 动态配置管理
  */
 class DynamicConfigManager(private val zkUtils: ZkUtils,
                            private val configHandlers: Map[String, ConfigHandler],
