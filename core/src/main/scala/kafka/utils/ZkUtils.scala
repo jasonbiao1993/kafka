@@ -424,6 +424,7 @@ class ZkUtils(val zkClient: ZkClient,
 
   /**
    *  make sure a persistent path exists in ZK. Create the path if not exist.
+   *  确保 ZK 中存在持久路径。如果不存在则创建路径
    */
   def makeSurePersistentPathExists(path: String, acls: java.util.List[ACL] = DefaultAcls) {
     //Consumer path is kept open as different consumers will write under this node.
@@ -431,8 +432,10 @@ class ZkUtils(val zkClient: ZkClient,
       ZooDefs.Ids.OPEN_ACL_UNSAFE
     } else acls
 
-    if (!zkClient.exists(path))
-      ZkPath.createPersistent(zkClient, path, createParents = true, acl) //won't throw NoNodeException or NodeExistsException
+    if (!zkClient.exists(path)) {
+      // 不存在创建持久节点
+      ZkPath.createPersistent(zkClient, path, createParents = true, acl)
+    } //won't throw NoNodeException or NodeExistsException
   }
 
   /**

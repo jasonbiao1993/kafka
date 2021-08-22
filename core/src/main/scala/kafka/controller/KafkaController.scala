@@ -173,15 +173,20 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
   val controllerContext = new ControllerContext(zkUtils, config.zkSessionTimeoutMs)
   val partitionStateMachine = new PartitionStateMachine(this)
   val replicaStateMachine = new ReplicaStateMachine(this)
+  // 初始化 ZookeeperLeaderElector 对象,  controller 临时节点监控及 controller 选举
   private val controllerElector = new ZookeeperLeaderElector(controllerContext, ZkUtils.ControllerPath, onControllerFailover,
     onControllerResignation, config.brokerId)
   // have a separate scheduler for the controller to be able to start and stop independently of the
   // kafka server
   private val autoRebalanceScheduler = new KafkaScheduler(1)
   var deleteTopicManager: TopicDeletionManager = null
+  //  partition leader 挂掉时，选举 leader
   val offlinePartitionSelector = new OfflinePartitionLeaderSelector(controllerContext, config)
+  // 重新分配分区时，leader 选举
   private val reassignedPartitionLeaderSelector = new ReassignedPartitionLeaderSelector(controllerContext)
+  // 使用最优的副本作为 leader
   private val preferredReplicaPartitionLeaderSelector = new PreferredReplicaPartitionLeaderSelector(controllerContext)
+  // broker 掉线时，重新选举 leader
   private val controlledShutdownPartitionLeaderSelector = new ControlledShutdownLeaderSelector(controllerContext)
   private val brokerRequestBatch = new ControllerBrokerRequestBatch(this)
 
@@ -326,31 +331,56 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
    * 6. Starts the partition state machine
    * If it encounters any unexpected exception/error while becoming controller, it resigns as the current controller.
    * This ensures another controller election will be triggered and there will always be an actively serving controller
+   * 如果当前 Broker 被选为 controller 时, 当被选为 controller,它将会做以下操作
+   * 1. 注册 controller epoch changed listener;
+   * 2. controller epoch 自增加1;
+   * 3. 初始化 KafkaController 的上下文信息 ControllerContext,它包含了当前的 topic、存活的 broker 以及已经存在的 partition 的 leader;
+   * 4. 启动 controller 的 channel 管理: 建立与其他 broker 的连接的,负责与其他 broker 之间的通信;
+   * 5. 启动 ReplicaStateMachine（副本状态机,管理副本的状态）;
+   * 6. 启动 PartitionStateMachine（分区状态机,管理分区的状态）;
+   * 如果在 Controller 服务初始化的过程中，出现了任何不可预期的 异常/错误，它将会退出当前的进程，这确保了可以再次触发 controller 的选举
    */
   def onControllerFailover() {
     if(isRunning) {
       info("Broker %d starting become controller state transition".format(config.brokerId))
       //read controller epoch from zk
+      // 读取 controller epoch
       readControllerEpochFromZookeeper()
-      // increment the controller epoch
+      // epoch + 1
       incrementControllerEpoch(zkUtils.zkClient)
       // before reading source of truth from zookeeper, register the listeners to get broker/topic callbacks
+      // 监控路径【/admin/reassign_partitions】，分区迁移监听
       registerReassignedPartitionsListener()
+      // 监控路径【/isr_change_notification】，isr 变动监听
       registerIsrChangeNotificationListener()
+      // 监听路径【/admin/preferred_replica_election】，最优 leader 选举
       registerPreferredReplicaElectionListener()
+      //  监听 Topic 的创建与删除
       partitionStateMachine.registerListeners()
+      // 监听 broker 的上下线
       replicaStateMachine.registerListeners()
+      // 初始化 controller 相关的变量信息
       initializeControllerContext()
+
+      // 初始化 replica 的状态信息: replica 是存活状态时是 OnlineReplica, 否则是 ReplicaDeletionIneligible
       replicaStateMachine.startup()
+      // 初始化 partition 的状态信息:如果 leader 所在 broker 是 alive 的,那么状态为 OnlinePartition,否则为 OfflinePartition
+      // 并状态为 OfflinePartition 的 topic 选举 leader
       partitionStateMachine.startup()
       // register the partition change listeners for all existing topics on failover
+      // 为所有的 topic 注册 partition change 监听器
       controllerContext.allTopics.foreach(topic => partitionStateMachine.registerPartitionChangeListener(topic))
       info("Broker %d is ready to serve as the new controller with epoch %d".format(config.brokerId, epoch))
+      // 触发一次分区副本迁移的操作
       maybeTriggerPartitionReassignment()
+      // 触发一次分区的最优 leader 选举操作
       maybeTriggerPreferredReplicaElection()
       /* send partition leadership info to all live brokers */
+      // 在 controller contest 初始化之后,我们需要发送 UpdateMetadata 请求在状态机启动之前,这是因为 broker 需要从 UpdateMetadata 请求
+      // 获取当前存活的 broker list, 因为它们需要处理来自副本状态机或分区状态机启动发送的 LeaderAndIsr 请求
       sendUpdateMetadataRequest(controllerContext.liveOrShuttingDownBrokerIds.toSeq)
       if (config.autoLeaderRebalanceEnable) {
+        // 如果开启自动均衡
         info("starting the partition rebalance scheduler")
         autoRebalanceScheduler.startup()
         autoRebalanceScheduler.schedule("partition-rebalance-thread", checkAndTriggerPartitionRebalance,
@@ -676,12 +706,18 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
    * Invoked when the controller module of a Kafka server is started up. This does not assume that the current broker
    * is the controller. It merely registers the session expiration listener and starts the controller leader
    * elector
+   *
+   * 当 broker 的 controller 模块启动时触发,它比并不保证当前 broker 是 controller,
+   * 它仅仅是注册 registerSessionExpirationListener 和启动 controllerElector
    */
   def startup() = {
     inLock(controllerContext.controllerLock) {
       info("Controller starting up")
+      // 注册 Session 过期监听
       registerSessionExpirationListener()
       isRunning = true
+      // 启动 controller elector
+      // 监听 zk 上 controller 节点的变化，并触发 controller 选举方法。
       controllerElector.startup
       info("Controller startup complete")
     }
@@ -738,19 +774,40 @@ class KafkaController(val config : KafkaConfig, zkUtils: ZkUtils, val brokerStat
     zkUtils.zkClient.subscribeStateChanges(new SessionExpirationListener())
   }
 
+  /**
+   * 在 initializeControllerContext() 初始化 KafkaController 上下文信息的方法中，主要做了以下事情：
+   *
+   * 1. 从 zk 获取所有 alive broker 列表，记录到 liveBrokers；
+   * 2. 从 zk 获取所有的 topic 列表，记录到 allTopic 中；
+   * 3. 从 zk 获取所有 Partition 的 replica 信息，更新到 partitionReplicaAssignment 中；
+   * 4. 从 zk 获取所有 Partition 的 LeaderAndIsr 信息，更新到 partitionLeadershipInfo 中；
+   * 5. 调用 startChannelManager() 启动 Controller 的 Channel Manager；
+   * 6. 通过 initializePreferredReplicaElection() 初始化需要最优 leader 选举的 Partition 列表，记录到 partitionsUndergoingPreferredReplicaElection 中；
+   * 7. 通过 initializePartitionReassignment() 方法初始化需要进行副本迁移的 Partition 列表，记录到 partitionsBeingReassigned 中；
+   * 8. 通过 initializeTopicDeletion() 方法初始化需要删除的 topic 列表及 TopicDeletionManager 对象；
+   */
   private def initializeControllerContext() {
     // update controller cache with delete topic information
+    // 初始化 zk 的 broker_list 信息
     controllerContext.liveBrokers = zkUtils.getAllBrokersInCluster().toSet
+    // 初始化所有的 topic 信息
     controllerContext.allTopics = zkUtils.getAllTopics().toSet
+    // 初始化所有 topic 的所有 partition 的 replica 分配
     controllerContext.partitionReplicaAssignment = zkUtils.getReplicaAssignmentForTopics(controllerContext.allTopics.toSeq)
+    // 下面两个都是新创建的空集合
     controllerContext.partitionLeadershipInfo = new mutable.HashMap[TopicAndPartition, LeaderIsrAndControllerEpoch]
     controllerContext.shuttingDownBrokerIds = mutable.Set.empty[Int]
     // update the leader and isr cache for all existing partitions from Zookeeper
+    // 获取 TopicPartition 的详细信息,更新到 partitionLeadershipInfo 中
     updateLeaderAndIsrCache()
     // start the channel manager
+    // 启动连接所有的 broker 的线程, 根据 broker/ids 的临时去判断要连接哪些 broker
     startChannelManager()
+    // 初始化需要进行最优 leader 选举的 partition
     initializePreferredReplicaElection()
+    // 初始化需要进行分区副本迁移的 partition
     initializePartitionReassignment()
+    // 初始化要删除的 topic 及后台的 topic 删除线程,还有不能删除的 topic 集合
     initializeTopicDeletion()
     info("Currently active brokers in the cluster: %s".format(controllerContext.liveBrokerIds))
     info("Currently shutting brokers in the cluster: %s".format(controllerContext.shuttingDownBrokerIds))

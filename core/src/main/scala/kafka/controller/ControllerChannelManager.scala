@@ -37,6 +37,20 @@ import scala.collection.JavaConverters._
 import scala.collection.{Set, mutable}
 import scala.collection.mutable.HashMap
 
+/**
+ * 负责管理所有的 Broker 通信
+ *
+ * 1. NetworkClient：网络连接对象；
+ * 2. Node：节点信息；
+ * 3. BlockingQueue：请求队列；
+ * 4. RequestSendThread：请求的发送线程。
+ *
+ * @param controllerContext
+ * @param config
+ * @param time
+ * @param metrics
+ * @param threadNamePrefix
+ */
 class ControllerChannelManager(controllerContext: ControllerContext, config: KafkaConfig, time: Time, metrics: Metrics, threadNamePrefix: Option[String] = None) extends Logging {
   protected val brokerStateInfo = new HashMap[Int, ControllerBrokerStateInfo]
   private val brokerLock = new Object
@@ -151,6 +165,17 @@ class ControllerChannelManager(controllerContext: ControllerContext, config: Kaf
 
 case class QueueItem(apiKey: ApiKeys, apiVersion: Option[Short], request: AbstractRequest, callback: AbstractRequestResponse => Unit)
 
+/**
+ * controller 用于发送请求的线程
+ * @param controllerId
+ * @param controllerContext
+ * @param queue
+ * @param networkClient
+ * @param brokerNode
+ * @param config
+ * @param time
+ * @param name
+ */
 class RequestSendThread(val controllerId: Int,
                         val controllerContext: ControllerContext,
                         val queue: BlockingQueue[QueueItem],

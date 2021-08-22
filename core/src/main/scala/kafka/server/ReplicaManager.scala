@@ -501,7 +501,7 @@ class ReplicaManager(val config: KafkaConfig,
 
     // if the fetch comes from the follower,
     // update its corresponding log end offset
-    // 更新 follower 对应 replicaId对应的偏移量
+    // 如果 fetch 来自 broker 的副本同步,那么就更新相关的 log end offset
     if(Request.isValidBrokerId(replicaId))
       updateFollowerLogReadResults(replicaId, logReadResults)
 

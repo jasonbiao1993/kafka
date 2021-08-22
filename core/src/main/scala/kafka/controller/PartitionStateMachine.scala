@@ -40,6 +40,9 @@ import kafka.utils.CoreUtils._
  *                          Valid previous states are NewPartition/OfflinePartition
  * 4. OfflinePartition    : If, after successful leader election, the leader for partition dies, then the partition
  *                          moves to the OfflinePartition state. Valid previous states are NewPartition/OnlinePartition
+ *
+ *
+ * Partition leader 节点状态机
  */
 class PartitionStateMachine(controller: KafkaController) extends Logging {
   private val controllerContext = controller.controllerContext

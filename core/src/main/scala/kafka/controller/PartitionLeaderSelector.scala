@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,11 +26,11 @@ import kafka.server.{ConfigType, KafkaConfig}
 trait PartitionLeaderSelector {
 
   /**
-   * @param topicAndPartition          The topic and partition whose leader needs to be elected
-   * @param currentLeaderAndIsr        The current leader and isr of input partition read from zookeeper
+   * @param topicAndPartition   The topic and partition whose leader needs to be elected
+   * @param currentLeaderAndIsr The current leader and isr of input partition read from zookeeper
    * @throws NoReplicaOnlineException If no replica in the assigned replicas list is alive
    * @return The leader and isr request, with the newly selected leader and isr, and the set of replicas to receive
-   * the LeaderAndIsrRequest.
+   *         the LeaderAndIsrRequest.
    */
   def selectLeader(topicAndPartition: TopicAndPartition, currentLeaderAndIsr: LeaderAndIsr): (LeaderAndIsr, Seq[Int])
 
@@ -39,12 +39,17 @@ trait PartitionLeaderSelector {
 /**
  * Select the new leader, new isr and receiving replicas (for the LeaderAndIsrRequest):
  * 1. If at least one broker from the isr is alive, it picks a broker from the live isr as the new leader and the live
- *    isr as the new isr.
+ * isr as the new isr.
  * 2. Else, if unclean leader election for the topic is disabled, it throws a NoReplicaOnlineException.
  * 3. Else, it picks some alive broker from the assigned replica list as the new leader and the new isr.
  * 4. If no broker in the assigned replica list is alive, it throws a NoReplicaOnlineException
  * Replicas to receive LeaderAndIsr request = live assigned replicas
  * Once the leader is successfully registered in zookeeper, it updates the allLeaders cache
+ *
+ * 1. 如果 isr 中至少有一个副本是存活的，那么从该 Partition 存活的 isr 中选举第一个副本作为新的 leader，存活的 isr 作为新的 isr；
+ * 2. 否则，如果脏选举（unclear elect）是禁止的，那么就抛出 NoReplicaOnlineException 异常；
+ * 3. 否则，即允许脏选举的情况下，从存活的、所分配的副本（不在 isr 中的副本）中选出一个副本作为新的 leader 和新的 isr 集合；
+ * 4. 否则，即是 Partition 分配的副本没有存活的，抛出 NoReplicaOnlineException 异常；
  */
 class OfflinePartitionLeaderSelector(controllerContext: ControllerContext, config: KafkaConfig)
   extends PartitionLeaderSelector with Logging {
@@ -105,13 +110,16 @@ class ReassignedPartitionLeaderSelector(controllerContext: ControllerContext) ex
 
   /**
    * The reassigned replicas are already in the ISR when selectLeader is called.
+   * 当这个方法被调用时，要求新分配的副本已经在 isr 中了
    */
   def selectLeader(topicAndPartition: TopicAndPartition, currentLeaderAndIsr: LeaderAndIsr): (LeaderAndIsr, Seq[Int]) = {
     val reassignedInSyncReplicas = controllerContext.partitionsBeingReassigned(topicAndPartition).newReplicas
     val currentLeaderEpoch = currentLeaderAndIsr.leaderEpoch
     val currentLeaderIsrZkPathVersion = currentLeaderAndIsr.zkVersion
     val aliveReassignedInSyncReplicas = reassignedInSyncReplicas.filter(r => controllerContext.liveBrokerIds.contains(r) &&
-                                                                             currentLeaderAndIsr.isr.contains(r))
+      currentLeaderAndIsr.isr.contains(r))
+
+    // 选择第一个作为新的 leader
     val newLeaderOpt = aliveReassignedInSyncReplicas.headOption
     newLeaderOpt match {
       case Some(newLeader) => (new LeaderAndIsr(newLeader, currentLeaderEpoch + 1, currentLeaderAndIsr.isr,
@@ -130,12 +138,15 @@ class ReassignedPartitionLeaderSelector(controllerContext: ControllerContext) ex
 }
 
 /**
+ * PreferredReplicaPartitionLeaderSelector 是最优 leader 选举，选择 AR（assign replica）中的第一个副本作为 leader，
+ * 前提是该 replica 在是存活的、并且在 isr 中，否则会抛出 StateChangeFailedException 的异常。
+ *
  * New leader = preferred (first assigned) replica (if in isr and alive);
  * New isr = current isr;
  * Replicas to receive LeaderAndIsr request = assigned replicas
  */
 class PreferredReplicaPartitionLeaderSelector(controllerContext: ControllerContext) extends PartitionLeaderSelector
-with Logging {
+  with Logging {
   this.logIdent = "[PreferredReplicaPartitionLeaderSelector]: "
 
   def selectLeader(topicAndPartition: TopicAndPartition, currentLeaderAndIsr: LeaderAndIsr): (LeaderAndIsr, Seq[Int]) = {
@@ -145,7 +156,7 @@ with Logging {
     val currentLeader = controllerContext.partitionLeadershipInfo(topicAndPartition).leaderAndIsr.leader
     if (currentLeader == preferredReplica) {
       throw new LeaderElectionNotNeededException("Preferred replica %d is already the current leader for partition %s"
-                                                   .format(preferredReplica, topicAndPartition))
+        .format(preferredReplica, topicAndPartition))
     } else {
       info("Current leader %d for partition %s is not the preferred replica.".format(currentLeader, topicAndPartition) +
         " Trigerring preferred replica leader election")
@@ -165,10 +176,13 @@ with Logging {
  * New leader = replica in isr that's not being shutdown;
  * New isr = current isr - shutdown replica;
  * Replicas to receive LeaderAndIsr request = live assigned replicas
+ *
+ * ControlledShutdownLeaderSelector 是在处理 broker 下线时调用的 leader 选举方法，
+ * 它会选举 isr 中第一个没有正在关闭的 replica 作为 leader，否则抛出 StateChangeFailedException 异常。
  */
 class ControlledShutdownLeaderSelector(controllerContext: ControllerContext)
-        extends PartitionLeaderSelector
-        with Logging {
+  extends PartitionLeaderSelector
+    with Logging {
 
   this.logIdent = "[ControlledShutdownLeaderSelector]: "
 
