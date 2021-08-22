@@ -85,6 +85,7 @@ class OffsetIndex(file: File, baseOffset: Long, maxIndexSize: Int = -1)
   def lookup(targetOffset: Long): OffsetPosition = {
     maybeLock(lock) {
       val idx = mmap.duplicate
+      // 通过 index 找到对应的slot
       val slot = indexSlotFor(idx, targetOffset, IndexSearchType.KEY)
       if(slot == -1)
         OffsetPosition(baseOffset, 0)

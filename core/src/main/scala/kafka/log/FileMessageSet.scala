@@ -119,10 +119,13 @@ class FileMessageSet private[kafka](@volatile var file: File,
                        start = this.start + position,
                        end = {
                          // Handle the integer overflow
+                         // 处理整数溢出
                          if (this.start + position + size < 0)
                            sizeInBytes()
-                         else
+                         else {
+                           // 处理到达文件末尾
                            math.min(this.start + position + size, sizeInBytes())
+                         }
                        })
   }
 
@@ -146,6 +149,7 @@ class FileMessageSet private[kafka](@volatile var file: File,
           .format(targetOffset, startingPosition, file.getAbsolutePath))
       buffer.rewind()
       val offset = buffer.getLong()
+      // 获取消息大小
       val messageSize = buffer.getInt()
       if (messageSize < Message.MinMessageOverhead)
         throw new IllegalStateException("Invalid message size: " + messageSize)
@@ -223,6 +227,8 @@ class FileMessageSet private[kafka](@volatile var file: File,
     val count = math.min(size, sizeInBytes)
     val bytesTransferred = (destChannel match {
       case tl: TransportLayer => tl.transferFrom(channel, position, count)
+
+        // 通过 transferTo 实现零拷贝 底层通过 sendfile() 实现
       case dc => channel.transferTo(position, count, dc)
     }).toInt
     trace("FileMessageSet " + file.getAbsolutePath + " : bytes transferred : " + bytesTransferred

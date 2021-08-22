@@ -127,6 +127,7 @@ class LogSegment(val log: FileMessageSet,
    */
   @threadsafe
   private[log] def translateOffset(offset: Long, startingFilePosition: Int = 0): (OffsetPosition, Int) = {
+    // 通过索引文件找到日志位置
     val mapping = index.lookup(offset)
     log.searchForOffsetWithSize(offset, max(mapping.position, startingFilePosition))
   }
@@ -160,15 +161,18 @@ class LogSegment(val log: FileMessageSet,
     val (startPosition, messageSetSize) = startOffsetAndSize
     val offsetMetadata = new LogOffsetMetadata(startOffset, this.baseOffset, startPosition.position)
 
+    // 调整后的最大尺寸
     val adjustedMaxSize =
       if (minOneMessage) math.max(maxSize, messageSetSize)
       else maxSize
 
     // return a log segment but with zero size in the case below
     if (adjustedMaxSize == 0)
+      // 在下面的情况下返回一个日志段，但大小为零
       return FetchDataInfo(offsetMetadata, MessageSet.Empty)
 
     // calculate the length of the message set to read based on whether or not they gave us a maxOffset
+    // 根据是否给我们提供了 maxOffset 来计算要读取的消息集的长度
     val length = maxOffset match {
       case None =>
         // no max offset, just read until the max position
@@ -181,6 +185,8 @@ class LogSegment(val log: FileMessageSet,
         if (offset < startOffset)
           return FetchDataInfo(offsetMetadata, MessageSet.Empty, firstMessageSetIncomplete = false)
         val mapping = translateOffset(offset, startPosition.position)
+
+        // 结束位置
         val endPosition =
           if (mapping == null)
             logSize // the max offset is off the end of the log, use the end of the file
@@ -189,6 +195,7 @@ class LogSegment(val log: FileMessageSet,
         min(min(maxPosition, endPosition) - startPosition.position, adjustedMaxSize).toInt
     }
 
+    // 读取数据
     FetchDataInfo(offsetMetadata, log.read(startPosition.position, length),
       firstMessageSetIncomplete = adjustedMaxSize < messageSetSize)
   }

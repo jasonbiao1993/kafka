@@ -232,6 +232,7 @@ class Partition(val topic: String,
 
   /**
    * Update the log end offset of a certain replica of this partition
+   * 更新该分区某个副本的日志结束偏移量
    */
   def updateReplicaLogReadResult(replicaId: Int, logReadResult: LogReadResult) {
     getReplica(replicaId) match {
@@ -276,6 +277,7 @@ class Partition(val topic: String,
                          .format(topic, partitionId, inSyncReplicas.map(_.brokerId).mkString(","),
                                  newInSyncReplicas.map(_.brokerId).mkString(",")))
             // update ISR in ZK and cache
+            // 在 ZK 和缓存中更新 ISR
             updateIsr(newInSyncReplicas)
             replicaManager.isrExpandRate.mark()
           }
@@ -379,6 +381,7 @@ class Partition(val topic: String,
     val leaderHWIncremented = inWriteLock(leaderIsrUpdateLock) {
       leaderReplicaIfLocal() match {
         case Some(leaderReplica) =>
+          // 获取不在同步的 replicas
           val outOfSyncReplicas = getOutOfSyncReplicas(leaderReplica, replicaMaxLagTimeMs)
           if(outOfSyncReplicas.nonEmpty) {
             val newInSyncReplicas = inSyncReplicas -- outOfSyncReplicas
@@ -386,6 +389,7 @@ class Partition(val topic: String,
             info("Shrinking ISR for partition [%s,%d] from %s to %s".format(topic, partitionId,
               inSyncReplicas.map(_.brokerId).mkString(","), newInSyncReplicas.map(_.brokerId).mkString(",")))
             // update ISR in zk and in cache
+            // 更新新的 ISR 列表
             updateIsr(newInSyncReplicas)
             // we may need to increment high watermark since ISR could be down to 1
 

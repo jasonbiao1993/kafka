@@ -467,6 +467,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
   /**
    * Handle a fetch request
+   * 处理 fetch 请求
    */
   def handleFetchRequest(request: RequestChannel.Request) {
     val fetchRequest = request.requestObj.asInstanceOf[FetchRequest]
@@ -502,6 +503,7 @@ class KafkaApis(val requestChannel: RequestChannel,
             // Please note that if the message format is changed from a higher version back to lower version this
             // test might break because some messages in new message format can be delivered to consumers before 0.10.0.0
             // without format down conversion.
+            // 兼容新老版本，进行转换
             val convertedData = if (replicaManager.getMessageFormatVersion(tp).exists(_ > Message.MagicValue_V0) &&
               !data.messages.isMagicValueInAllWrapperMessages(Message.MagicValue_V0)) {
               trace(s"Down converting message to V0 for fetch request from ${fetchRequest.clientId}")
@@ -549,6 +551,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       sendResponseCallback(Seq.empty)
     else {
       // call the replica manager to fetch messages from the local replica
+      // 调用副本管理器从本地副本获取消息
       replicaManager.fetchMessages(
         fetchRequest.maxWait.toLong,
         fetchRequest.replicaId,

@@ -103,7 +103,7 @@ class Log(val dir: File,
       0
   }
   val t = time.milliseconds
-  /* the actual segments of the log */
+  /* the actual segments of the log  日志的实际段*/
   private val segments: ConcurrentNavigableMap[java.lang.Long, LogSegment] = new ConcurrentSkipListMap[java.lang.Long, LogSegment]
   loadSegments()
 
@@ -543,6 +543,7 @@ class Log(val dir: File,
     if(startOffset == next)
       return FetchDataInfo(currentNextOffsetMetadata, MessageSet.Empty)
 
+    // 获取对应的 Segments
     var entry = segments.floorEntry(startOffset)
 
     // attempt to read beyond the log end offset is an error
@@ -570,6 +571,7 @@ class Log(val dir: File,
           entry.getValue.size
         }
       }
+      // 拉取数据
       val fetchInfo = entry.getValue.read(startOffset, maxOffset, maxLength, maxPosition, minOneMessage)
       if(fetchInfo == null) {
         entry = segments.higherEntry(entry.getKey)
